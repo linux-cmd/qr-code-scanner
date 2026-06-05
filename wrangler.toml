@@ -1,0 +1,13 @@
+name = "qr-code-scanner"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-06-05"
+
+[[kv_namespaces]]
+binding = "AI_ANALYSIS_CACHE"
+id = "replace-with-production-kv-id"
+preview_id = "replace-with-preview-kv-id"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "replace-with-production-rate-limit-kv-id"
+preview_id = "replace-with-preview-rate-limit-kv-id"
