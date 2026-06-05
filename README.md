@@ -6,7 +6,7 @@ A Cloudflare Pages-ready QR web app with browser-side scanning/cropping, determi
 
 - Upload, drag/drop, paste, and camera QR scanning.
 - Browser-side QR crop export as PNG.
-- URL-only reliability checks with deterministic scoring and Google Safe Browsing support.
+- URL-only reliability checks with deterministic scoring and optional Google Web Risk support.
 - AI explanation runs only after the user clicks `Get AI analysis`.
 - Groq-first AI provider flow with Gemini fallback only on explicit Groq rate-limit responses.
 - Turnstile and KV-backed rate limits for the AI endpoint.
@@ -34,7 +34,7 @@ AI_FALLBACK_MODEL=gemini-2.5-flash-lite
 ```text
 GROQ_API_KEY
 GEMINI_API_KEY
-GOOGLE_SAFE_BROWSING_API_KEY
+GOOGLE_WEB_RISK_API_KEY
 TURNSTILE_SECRET_KEY
 VITE_TURNSTILE_SITE_KEY
 VITE_ADSENSE_CLIENT_ID

@@ -24,12 +24,18 @@ type MetadataResult = {
   fetchBlocked?: string;
 };
 
-type SafeBrowsingMatch = {
-  threatType?: string;
-  platformType?: string;
+type WebRiskThreatType = 'MALWARE' | 'SOCIAL_ENGINEERING' | 'UNWANTED_SOFTWARE';
+
+type WebRiskSearchResponse = {
   threat?: {
-    url?: string;
+    threatTypes?: WebRiskThreatType[];
+    expireTime?: string;
   };
+};
+
+type WebRiskLookupResult = {
+  status: 'match' | 'no-match' | 'unavailable';
+  threatTypes: WebRiskThreatType[];
 };
 
 export function normalizeUrl(input: string): URL {
@@ -81,23 +87,24 @@ export async function buildUrlCheck(inputUrl: string, env: AppEnv): Promise<UrlC
     });
   }
 
-  const safeBrowsingMatches = await checkSafeBrowsing(final.toString(), env);
-  if (safeBrowsingMatches.length > 0) {
+  const webRiskResult = await checkWebRisk(final.toString(), env);
+  if (webRiskResult.status === 'match') {
+    const strongestThreat = strongestWebRiskThreat(webRiskResult.threatTypes);
     signals.push({
-      key: 'safe-browsing-threat',
-      label: `Google Safe Browsing reported ${safeBrowsingMatches[0].threatType ?? 'a threat'} for this URL.`,
+      key: `web-risk-threat-${strongestThreat}`,
+      label: `Known Google threat match found. ${formatWebRiskThreat(strongestThreat)}.`,
       severity: 'high'
     });
-  } else if (!env.GOOGLE_SAFE_BROWSING_API_KEY) {
+  } else if (webRiskResult.status === 'no-match') {
     signals.push({
-      key: 'safe-browsing-not-configured',
-      label: 'Safe Browsing key is not configured, so threat-list lookup was skipped.',
-      severity: 'medium'
+      key: 'web-risk-no-match',
+      label: 'No known Google threat match found. This does not guarantee the site is safe.',
+      severity: 'low'
     });
   } else {
     signals.push({
-      key: 'safe-browsing-clear',
-      label: 'Google Safe Browsing did not report a threat for the final URL.',
+      key: 'web-risk-unavailable',
+      label: 'Google Web Risk lookup is unavailable, so deterministic heuristics were used without Google threat intelligence.',
       severity: 'low'
     });
   }
@@ -120,7 +127,20 @@ export async function buildUrlCheck(inputUrl: string, env: AppEnv): Promise<UrlC
 }
 
 export function scoreSignals(signals: SafetySignal[]): number {
-  const score = signals.reduce((total, signal) => {
+  const webRiskScore = signals.reduce((highest, signal) => {
+    if (signal.key === 'web-risk-threat-MALWARE' || signal.key === 'web-risk-threat-SOCIAL_ENGINEERING') {
+      return Math.max(highest, 100);
+    }
+    if (signal.key === 'web-risk-threat-UNWANTED_SOFTWARE') {
+      return Math.max(highest, 80);
+    }
+    return highest;
+  }, 0);
+
+  const heuristicScore = signals.reduce((total, signal) => {
+    if (signal.key.startsWith('web-risk-')) {
+      return total;
+    }
     if (signal.severity === 'high') {
       return total + 34;
     }
@@ -130,7 +150,7 @@ export function scoreSignals(signals: SafetySignal[]): number {
     return total;
   }, 0);
 
-  return Math.max(0, Math.min(100, score));
+  return Math.max(0, Math.min(100, webRiskScore + heuristicScore));
 }
 
 export function riskLevel(score: number): RiskLevel {
@@ -372,39 +392,55 @@ function cleanText(value: string | undefined): string | undefined {
   return text ? text.slice(0, 220) : undefined;
 }
 
-async function checkSafeBrowsing(url: string, env: AppEnv): Promise<SafeBrowsingMatch[]> {
-  if (!env.GOOGLE_SAFE_BROWSING_API_KEY) {
-    return [];
+async function checkWebRisk(url: string, env: AppEnv): Promise<WebRiskLookupResult> {
+  if (!env.GOOGLE_WEB_RISK_API_KEY) {
+    return { status: 'unavailable', threatTypes: [] };
   }
 
-  const response = await fetch(
-    `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${encodeURIComponent(env.GOOGLE_SAFE_BROWSING_API_KEY)}`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        client: {
-          clientId: 'qr-code-scanner',
-          clientVersion: '0.1.0'
-        },
-        threatInfo: {
-          threatTypes: ['MALWARE', 'SOCIAL_ENGINEERING', 'UNWANTED_SOFTWARE', 'POTENTIALLY_HARMFUL_APPLICATION'],
-          platformTypes: ['ANY_PLATFORM'],
-          threatEntryTypes: ['URL'],
-          threatEntries: [{ url }]
-        }
-      })
+  const endpoint = new URL('https://webrisk.googleapis.com/v1/uris:search');
+  endpoint.searchParams.append('threatTypes', 'MALWARE');
+  endpoint.searchParams.append('threatTypes', 'SOCIAL_ENGINEERING');
+  endpoint.searchParams.append('threatTypes', 'UNWANTED_SOFTWARE');
+  endpoint.searchParams.set('uri', url);
+  endpoint.searchParams.set('key', env.GOOGLE_WEB_RISK_API_KEY);
+
+  const response = await fetch(endpoint.toString(), {
+    method: 'GET',
+    headers: {
+      accept: 'application/json'
     }
-  ).catch(() => null);
+  }).catch(() => null);
 
   if (!response?.ok) {
-    return [];
+    return { status: 'unavailable', threatTypes: [] };
   }
 
-  const payload = (await response.json()) as { matches?: SafeBrowsingMatch[] };
-  return payload.matches ?? [];
+  const payload = (await response.json()) as WebRiskSearchResponse;
+  const threatTypes = payload.threat?.threatTypes ?? [];
+  return {
+    status: threatTypes.length > 0 ? 'match' : 'no-match',
+    threatTypes
+  };
+}
+
+function strongestWebRiskThreat(threatTypes: WebRiskThreatType[]): WebRiskThreatType {
+  if (threatTypes.includes('MALWARE')) {
+    return 'MALWARE';
+  }
+  if (threatTypes.includes('SOCIAL_ENGINEERING')) {
+    return 'SOCIAL_ENGINEERING';
+  }
+  return 'UNWANTED_SOFTWARE';
+}
+
+function formatWebRiskThreat(threatType: WebRiskThreatType): string {
+  if (threatType === 'MALWARE') {
+    return 'MALWARE: dangerous';
+  }
+  if (threatType === 'SOCIAL_ENGINEERING') {
+    return 'SOCIAL_ENGINEERING: dangerous';
+  }
+  return 'UNWANTED_SOFTWARE: high risk';
 }
 
 function compactSignals(signals: SafetySignal[]): SafetySignal[] {

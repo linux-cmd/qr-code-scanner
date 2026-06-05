@@ -27,7 +27,7 @@ export type AppEnv = {
   AI_FALLBACK_MODEL?: string;
   GROQ_API_KEY?: string;
   GEMINI_API_KEY?: string;
-  GOOGLE_SAFE_BROWSING_API_KEY?: string;
+  GOOGLE_WEB_RISK_API_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
   AI_ANALYSIS_CACHE?: KVNamespace;
   RATE_LIMIT_KV?: KVNamespace;

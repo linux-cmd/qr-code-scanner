@@ -6,7 +6,7 @@ const input: AiAnalysisInput = {
   normalizedUrl: 'https://example.com/',
   riskScore: 15,
   riskLevel: 'low',
-  signals: [{ key: 'safe-browsing-clear', label: 'No threat was reported.', severity: 'low' }]
+  signals: [{ key: 'web-risk-no-match', label: 'No known Google threat match found. This does not guarantee the site is safe.', severity: 'low' }]
 };
 
 const baseEnv: AppEnv = {
