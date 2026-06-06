@@ -7,17 +7,17 @@ import {
   FileImage,
   Loader2,
   ScanLine,
-  ShieldCheck,
   ShieldQuestion,
-  Sparkles,
   Upload,
   X
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { checkUrl, getAiAnalysis } from './lib/api';
+import { AiAnalysisPanel } from './components/AiAnalysisPanel';
+import { ScanResult } from './components/ScanResult';
+import { getAiAnalysis, requestDeepScan, scanUrl, sendFeedback } from './lib/api';
 import { canvasFromFile, canvasFromVideo, cropQr, detectQr, pointsToCssPolygon } from './lib/qr';
 import { getUrlCandidate, hostnameFromUrl } from './lib/url';
-import type { AiAnalysisResult, CropResult, QrResult, UrlCheckResult } from './types';
+import type { AiAnalysisResult, CropResult, QrResult, ScanResult as ScanResultType } from './types';
 
 type Status = 'idle' | 'working' | 'success' | 'error';
 
@@ -34,6 +34,7 @@ const adsenseClientId = import.meta.env.VITE_ADSENSE_CLIENT_ID as string | undef
 export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const handleFileRef = useRef<(file: File) => Promise<void>>(async () => undefined);
+  const handleUrlScanRef = useRef<(value: string) => Promise<void>>(async () => undefined);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -45,11 +46,14 @@ export default function App() {
   const [imageSize, setImageSize] = useState({ width: 1, height: 1 });
   const [qrResult, setQrResult] = useState<QrResult | null>(null);
   const [crop, setCrop] = useState<CropResult | null>(null);
-  const [urlCheck, setUrlCheck] = useState<UrlCheckResult | null>(null);
-  const [urlCheckLoading, setUrlCheckLoading] = useState(false);
+  const [scanResult, setScanResult] = useState<ScanResultType | null>(null);
+  const [scanLoading, setScanLoading] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysisResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [manualUrl, setManualUrl] = useState('');
+  const [deepScanMessage, setDeepScanMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
 
@@ -75,6 +79,7 @@ export default function App() {
 
   useEffect(() => {
     handleFileRef.current = handleFile;
+    handleUrlScanRef.current = handleUrlScan;
   });
 
   useEffect(() => {
@@ -83,6 +88,13 @@ export default function App() {
       const file = item?.getAsFile();
       if (file) {
         void handleFileRef.current(file);
+        return;
+      }
+
+      const text = event.clipboardData?.getData('text/plain')?.trim();
+      const candidate = text ? getUrlCandidate(text) : null;
+      if (candidate) {
+        void handleUrlScanRef.current(candidate);
       }
     };
 
@@ -147,16 +159,37 @@ export default function App() {
 
     const candidate = getUrlCandidate(result.text);
     if (candidate) {
-      setUrlCheckLoading(true);
-      try {
-        const nextCheck = await checkUrl(candidate);
-        setUrlCheck(nextCheck);
-      } catch (error) {
-        setUrlCheck(null);
-        setMessage(error instanceof Error ? error.message : 'QR decoded, but URL safety check failed.');
-      } finally {
-        setUrlCheckLoading(false);
-      }
+      await runScan(candidate);
+    }
+  }
+
+  async function handleUrlScan(value: string) {
+    const candidate = getUrlCandidate(value);
+    if (!candidate) {
+      setStatus('error');
+      setMessage('Enter a valid HTTP or HTTPS URL.');
+      return;
+    }
+    resetResultState();
+    stopCamera();
+    setStatus('success');
+    setMessage('URL ready for intelligence scan.');
+    setQrResult({ text: candidate, points: [], source: 'jsqr' });
+    await runScan(candidate);
+  }
+
+  async function runScan(candidate: string) {
+    setScanLoading(true);
+    setDeepScanMessage(null);
+    setFeedbackMessage(null);
+    try {
+      const nextCheck = await scanUrl(candidate);
+      setScanResult(nextCheck);
+    } catch (error) {
+      setScanResult(null);
+      setMessage(error instanceof Error ? error.message : 'URL intelligence scan failed.');
+    } finally {
+      setScanLoading(false);
     }
   }
 
@@ -216,7 +249,7 @@ export default function App() {
   }
 
   async function requestAiAnalysis() {
-    if (!urlCheck) {
+    if (!scanResult) {
       return;
     }
 
@@ -225,12 +258,7 @@ export default function App() {
 
     try {
       const result = await getAiAnalysis({
-        normalizedUrl: urlCheck.normalizedUrl,
-        riskScore: urlCheck.riskScore,
-        riskLevel: urlCheck.riskLevel,
-        signals: urlCheck.signals,
-        title: urlCheck.title,
-        description: urlCheck.description,
+        ...scanResult,
         turnstileToken
       });
       setAiAnalysis(result);
@@ -241,13 +269,32 @@ export default function App() {
     }
   }
 
+  async function runDeepScan() {
+    if (!scanResult) {
+      return;
+    }
+    const result = await requestDeepScan(scanResult.finalUrl);
+    setDeepScanMessage(result.message);
+  }
+
+  async function reportResult() {
+    if (!scanResult) {
+      return;
+    }
+    const result = await sendFeedback({
+      scanId: scanResult.scanId,
+      message: 'User requested review from result panel.'
+    });
+    setFeedbackMessage(result.message);
+  }
+
   function resetResultState() {
     setQrResult(null);
-    setUrlCheck(null);
+    setScanResult(null);
     setAiAnalysis(null);
     setAiError(null);
     setTurnstileToken(null);
-    setUrlCheckLoading(false);
+    setScanLoading(false);
     previewCanvasRef.current = null;
     setCrop((previous) => {
       if (previous) {
@@ -277,6 +324,25 @@ export default function App() {
           </button>
         </div>
       </section>
+
+      <form
+        className="url-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleUrlScan(manualUrl);
+        }}
+      >
+        <input
+          aria-label="URL to scan"
+          onChange={(event) => setManualUrl(event.target.value)}
+          placeholder="Paste a URL to inspect before opening"
+          type="text"
+          value={manualUrl}
+        />
+        <button className="button primary" type="submit">
+          Scan URL
+        </button>
+      </form>
 
       <input
         ref={fileInputRef}
@@ -345,10 +411,14 @@ export default function App() {
 
           <section className="panel-section">
             <h2>Reliability</h2>
-            {urlCheckLoading ? (
-              <LoadingLabel label="Checking URL reliability" />
-            ) : urlCheck ? (
-              <RiskReport urlCheck={urlCheck} />
+            {scanLoading ? (
+              <LoadingLabel label="Checking URL intelligence" />
+            ) : scanResult ? (
+              <>
+                <ScanResult result={scanResult} onDeepScan={runDeepScan} onFeedback={reportResult} />
+                {deepScanMessage ? <p className="muted">{deepScanMessage}</p> : null}
+                {feedbackMessage ? <p className="muted">{feedbackMessage}</p> : null}
+              </>
             ) : qrResult && !urlCandidate ? (
               <p className="muted">Reliability checks are only available for URLs.</p>
             ) : (
@@ -373,27 +443,16 @@ export default function App() {
 
           <section className="panel-section">
             <h2>AI analysis</h2>
-            {urlCheck ? (
+            {scanResult ? (
               <>
                 <Turnstile onToken={setTurnstileToken} />
-                <button
-                  className="button secondary full"
+                <AiAnalysisPanel
+                  analysis={aiAnalysis}
+                  error={aiError}
+                  loading={aiLoading}
                   disabled={aiLoading || Boolean(turnstileSiteKey && !turnstileToken)}
                   onClick={requestAiAnalysis}
-                  type="button"
-                >
-                  {aiLoading ? <Loader2 className="spin" size={18} /> : <Sparkles size={18} />}
-                  Get AI analysis
-                </button>
-                {aiError ? <p className="error-text">{aiError}</p> : null}
-                {aiAnalysis ? (
-                  <div className="ai-box">
-                    <p>{aiAnalysis.explanation}</p>
-                    <span>
-                      {aiAnalysis.cached ? 'Cached' : 'Fresh'} via {aiAnalysis.provider} {aiAnalysis.model}
-                    </span>
-                  </div>
-                ) : null}
+                />
               </>
             ) : (
               <p className="muted">AI stays off until you request it for a decoded URL.</p>
@@ -401,6 +460,11 @@ export default function App() {
           </section>
         </aside>
       </section>
+      <footer className="site-footer">
+        <a href="/privacy.html">Privacy</a>
+        <a href="/terms.html">Terms</a>
+        <a href="/contact.html">Contact</a>
+      </footer>
     </main>
   );
 }
@@ -420,32 +484,6 @@ function LoadingLabel({ label }: { label: string }) {
     <div className="loading-label">
       <Loader2 className="spin" size={18} />
       {label}
-    </div>
-  );
-}
-
-function RiskReport({ urlCheck }: { urlCheck: UrlCheckResult }) {
-  return (
-    <div className="risk-report">
-      <div className={`risk-meter ${urlCheck.riskLevel}`}>
-        <div>
-          <ShieldCheck size={20} />
-          <span>{urlCheck.riskLevel} risk</span>
-        </div>
-        <strong>{urlCheck.riskScore}/100</strong>
-      </div>
-      <div className="meter-track">
-        <span style={{ width: `${urlCheck.riskScore}%` }} />
-      </div>
-      {urlCheck.title ? <p className="site-title">{urlCheck.title}</p> : null}
-      {urlCheck.description ? <p className="muted">{urlCheck.description}</p> : null}
-      <ul className="signals">
-        {urlCheck.signals.map((signal) => (
-          <li className={signal.severity} key={signal.key}>
-            {signal.label}
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { AiAnalysisResult, UrlCheckResult } from '../types';
+import type { AiAnalysisResult, ScanResult } from '../types';
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
   const response = await fetch(url, {
@@ -21,18 +21,20 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return payload as T;
 }
 
-export function checkUrl(url: string): Promise<UrlCheckResult> {
-  return postJson<UrlCheckResult>('/api/url-check', { url });
+export function scanUrl(url: string): Promise<ScanResult> {
+  return postJson<ScanResult>('/api/scan', { url });
 }
 
-export function getAiAnalysis(args: {
-  normalizedUrl: string;
-  riskScore: number;
-  riskLevel: string;
-  signals: unknown[];
-  title?: string;
-  description?: string;
+export function getAiAnalysis(args: Partial<ScanResult> & {
   turnstileToken?: string | null;
 }): Promise<AiAnalysisResult> {
   return postJson<AiAnalysisResult>('/api/ai-analysis', args);
+}
+
+export function requestDeepScan(url: string): Promise<{ status: string; message: string; checkedAt?: string }> {
+  return postJson('/api/deep-scan', { url });
+}
+
+export function sendFeedback(args: { scanId: string; message: string }): Promise<{ status: string; message: string }> {
+  return postJson('/api/feedback', args);
 }

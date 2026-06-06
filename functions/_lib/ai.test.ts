@@ -6,7 +6,7 @@ const input: AiAnalysisInput = {
   normalizedUrl: 'https://example.com/',
   riskScore: 15,
   riskLevel: 'low',
-  signals: [{ key: 'web-risk-no-match', label: 'No known Google threat match found. This does not guarantee the site is safe.', severity: 'low' }]
+  signals: [{ key: 'noObviousHeuristicRisk', label: 'No obvious risk detected from local URL checks.', severity: 'low', score: 0, category: 'metadata' }]
 };
 
 const baseEnv: AppEnv = {
@@ -34,7 +34,7 @@ describe('AI provider behavior', () => {
           return new Response(null, { status: 429 });
         }
         return Response.json({
-          candidates: [{ content: { parts: [{ text: 'This is a short fallback explanation.' }] } }]
+          candidates: [{ content: { parts: [{ text: JSON.stringify({ shortDescription: 'Fallback summary.', riskExplanation: 'Fallback explanation.', topReasons: ['Reason'], recommendedAction: 'Review before opening.', confidenceWording: 'Medium confidence.' }) }] } }]
         });
       })
     );
@@ -47,7 +47,7 @@ describe('AI provider behavior', () => {
     expect(calls.some((url) => url.includes('generativelanguage.googleapis.com'))).toBe(true);
   });
 
-  it('does not use Gemini for non-rate-limit Groq errors', async () => {
+  it('uses Gemini fallback path when Groq has a provider failure', async () => {
     const calls: string[] = [];
     vi.stubGlobal(
       'fetch',
@@ -60,16 +60,34 @@ describe('AI provider behavior', () => {
 
     const result = await createAiAnalysis(baseEnv, input);
 
-    expect(result.provider).toBe('groq-template');
-    expect(result.fallbackUsed).toBe(false);
-    expect(calls.some((url) => url.includes('generativelanguage.googleapis.com'))).toBe(false);
+    expect(result.provider).toBe('gemini-template');
+    expect(result.fallbackUsed).toBe(true);
+    expect(calls.some((url) => url.includes('generativelanguage.googleapis.com'))).toBe(true);
   });
 
   it('uses a deterministic template when provider env is missing', async () => {
     const result = await createAiAnalysis({}, input);
 
     expect(result.provider).toBe('unconfigured-template');
-    expect(result.explanation).toContain('deterministic risk score');
+    expect(result.explanation).toContain('No obvious risk detected');
+    expect(result.explanation).not.toMatch(/does not involve browsing the URL|did not browse the URL|did not inspect the URL/i);
+    expect(result.explanation).not.toMatch(/\bis safe\b/i);
+  });
+
+  it('falls back to a deterministic template when provider JSON is invalid', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          choices: [{ message: { content: 'not json' } }]
+        })
+      )
+    );
+
+    const result = await createAiAnalysis(baseEnv, input);
+
+    expect(result.provider).toBe('groq-template');
+    expect(result.riskExplanation).toContain('deterministic score');
   });
 
   it('does not reuse or write template fallback responses in the AI cache', async () => {

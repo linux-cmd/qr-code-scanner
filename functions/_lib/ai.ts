@@ -2,16 +2,30 @@ import { hashText } from './rateLimit';
 import type { AppEnv, RiskLevel, SafetySignal } from './types';
 
 export type AiAnalysisInput = {
+  originalUrl?: string;
   normalizedUrl: string;
+  finalUrl?: string;
   riskScore: number;
   riskLevel: RiskLevel;
+  confidence?: string;
+  confidenceWording?: string;
+  summaryLabel?: string;
+  recommendedAction?: string;
   signals: SafetySignal[];
+  threatIntel?: unknown[];
+  limitations?: string[];
+  redirectChain?: unknown[];
   title?: string;
   description?: string;
 };
 
 export type AiAnalysisOutput = {
   normalizedUrl: string;
+  shortDescription: string;
+  riskExplanation: string;
+  topReasons: string[];
+  recommendedAction: string;
+  confidenceWording: string;
   explanation: string;
   provider: string;
   model: string;
@@ -27,7 +41,8 @@ type ProviderResult = {
 };
 
 export async function getCachedAiAnalysis(env: AppEnv, input: AiAnalysisInput): Promise<AiAnalysisOutput> {
-  const cacheKey = `ai:${await hashText(input.normalizedUrl)}`;
+  const signalHash = await hashText(JSON.stringify({ score: input.riskScore, level: input.riskLevel, signals: input.signals, threatIntel: input.threatIntel }));
+  const cacheKey = `ai:v1:${await hashText(`${input.normalizedUrl}:${signalHash}`)}`;
   const cached = await env.AI_ANALYSIS_CACHE?.get(cacheKey, 'json');
   if (isCacheableAiOutput(cached)) {
     return {
@@ -60,60 +75,99 @@ export async function createAiAnalysis(env: AppEnv, input: AiAnalysisInput): Pro
 
   const primary = await callGroq(env, primaryModel, prompt);
   if (primary.ok && primary.text) {
-    return {
-      normalizedUrl: input.normalizedUrl,
-      explanation: cleanExplanation(primary.text),
-      provider: primaryProvider,
-      model: primaryModel,
-      cached: false,
-      fallbackUsed: false
-    };
+    return providerAnalysis(input.normalizedUrl, primary.text, primaryProvider, primaryModel, false);
   }
 
-  if (primary.rateLimited && fallbackProvider === 'gemini' && fallbackModel) {
+  let fallbackAttempted = false;
+  if ((primary.rateLimited || primary.status === 503 || primary.status === 500) && fallbackProvider === 'gemini' && fallbackModel) {
+    fallbackAttempted = true;
     const fallback = await callGemini(env, fallbackModel, prompt);
     if (fallback.ok && fallback.text) {
-      return {
-        normalizedUrl: input.normalizedUrl,
-        explanation: cleanExplanation(fallback.text),
-        provider: fallbackProvider,
-        model: fallbackModel,
-        cached: false,
-        fallbackUsed: true
-      };
+      return providerAnalysis(input.normalizedUrl, fallback.text, fallbackProvider, fallbackModel, true);
     }
   }
 
   return templateAnalysis(
     input,
-    primary.rateLimited ? fallbackProvider ?? primaryProvider : primaryProvider,
-    primary.rateLimited ? fallbackModel ?? primaryModel : primaryModel,
-    Boolean(primary.rateLimited)
+    fallbackAttempted ? fallbackProvider ?? primaryProvider : primaryProvider,
+    fallbackAttempted ? fallbackModel ?? primaryModel : primaryModel,
+    fallbackAttempted
   );
 }
 
+function providerAnalysis(normalizedUrl: string, jsonText: string, provider: string, model: string, fallbackUsed: boolean): AiAnalysisOutput {
+  const parsed = parseAiJson(jsonText);
+  if (!parsed) {
+    return {
+      normalizedUrl,
+      shortDescription: 'AI explanation is unavailable right now.',
+      riskExplanation: 'The deterministic score and reason list are still available.',
+      topReasons: [],
+      recommendedAction: 'Use the deterministic result to decide whether to open the link.',
+      confidenceWording: 'AI output could not be validated.',
+      explanation: 'AI explanation is unavailable right now. The deterministic score and reason list are still available.',
+      provider: `${provider}-template`,
+      model,
+      cached: false,
+      fallbackUsed
+    };
+  }
+  return {
+    normalizedUrl,
+    ...parsed,
+    explanation: cleanExplanation(`${parsed.shortDescription} ${parsed.riskExplanation} ${parsed.recommendedAction}`),
+    provider,
+    model,
+    cached: false,
+    fallbackUsed
+  };
+}
+
 export function buildPrompt(input: AiAnalysisInput): string {
-  const signals = input.signals.map((signal) => `- ${signal.severity}: ${signal.label}`).join('\n');
-  return [
-    'Write a short user-facing QR URL explanation in 2 sentences or fewer.',
-    'Use only the provided deterministic signals. Do not claim the URL is safe.',
-    `URL: ${input.normalizedUrl}`,
-    `Risk: ${input.riskLevel} (${input.riskScore}/100)`,
-    input.title ? `Page title: ${input.title}` : '',
-    input.description ? `Page description: ${input.description}` : '',
-    'Signals:',
-    signals || '- low: No notable signals were provided.'
-  ]
-    .filter(Boolean)
-    .join('\n');
+  return JSON.stringify({
+    instruction:
+      'Return strict JSON only. Explain the structured URL scan result. Do not perform independent browsing. Do not invent facts. Do not label the destination as harmless or trustworthy. Do not change the score.',
+    outputSchema: {
+      shortDescription: 'string',
+      riskExplanation: 'string',
+      topReasons: ['string'],
+      recommendedAction: 'string',
+      confidenceWording: 'string'
+    },
+    rules: [
+      'Use only the structured scan result.',
+      'Do not browse independently or claim independent browsing.',
+      'The scan is based on deterministic URL checks, redirect analysis, and any enabled threat-intelligence sources.',
+      'If threat feeds are disabled, say: No external threat-feed lookup was performed.',
+      'Mention redirects only when redirectChain contains a destination change.',
+      'Do not change the risk score.',
+      'Do not label the destination as harmless or trustworthy.'
+    ],
+    scanResult: input
+  });
 }
 
 export function templateAnalysis(input: AiAnalysisInput, provider: string, model: string, fallbackUsed: boolean): AiAnalysisOutput {
-  const strongest = input.signals.find((signal) => signal.severity === 'high') ?? input.signals.find((signal) => signal.severity === 'medium');
-  const detail = strongest ? ` The most important signal is: ${strongest.label}` : ' No major deterministic warning signal was found.';
+  const strongest = input.signals.find((signal) => signal.severity === 'dangerous' || signal.severity === 'high') ?? input.signals.find((signal) => signal.score > 0);
+  const shortDescription = templateShortDescription(input.riskLevel);
+  const riskExplanation = strongest ? `Top reason: ${strongest.label}` : 'No obvious risk detected from local URL checks.';
+  const recommendedAction = input.recommendedAction ?? templateAction(input.riskLevel);
+  const confidenceWording = input.confidenceWording ?? `Confidence is ${input.confidence ?? 'low'} based on deterministic URL checks, redirect analysis, and any enabled threat-intelligence sources.`;
+  const redirectNote =
+    input.redirectChain && input.redirectChain.length > 1 && input.finalUrl && input.originalUrl && input.finalUrl !== input.originalUrl
+      ? ` The destination changed through redirects before reaching the final URL: ${input.finalUrl}`
+      : '';
+  const threatDisabled = input.threatIntel?.some((item) => Boolean(item && typeof item === 'object' && (item as { commercialUseStatus?: unknown }).commercialUseStatus === 'disabled'))
+    ? ' No external threat-feed lookup was performed.'
+    : '';
   return {
     normalizedUrl: input.normalizedUrl,
-    explanation: `This URL currently has a ${input.riskLevel} deterministic risk score of ${input.riskScore}/100.${detail}`,
+    shortDescription,
+    riskExplanation: `${riskExplanation}${redirectNote}${threatDisabled}`,
+    topReasons: input.signals.slice(0, 4).map((signal) => signal.label),
+    recommendedAction,
+    confidenceWording,
+    explanation: `${shortDescription} ${riskExplanation} ${recommendedAction}`,
     provider: `${provider}-template`,
     model,
     cached: false,
@@ -137,7 +191,8 @@ async function callGroq(env: AppEnv, model: string, prompt: string): Promise<Pro
       messages: [
         {
           role: 'system',
-          content: 'You explain deterministic URL safety signals clearly and cautiously.'
+          content:
+            'You explain deterministic URL scan results clearly and cautiously. Return strict JSON only. Never label a site as harmless or trustworthy.'
         },
         {
           role: 'user',
@@ -230,4 +285,64 @@ function isAiOutput(value: unknown): value is AiAnalysisOutput {
       'provider' in value &&
       typeof (value as { provider?: unknown }).provider === 'string'
   );
+}
+
+function parseAiJson(value: string): Pick<AiAnalysisOutput, 'shortDescription' | 'riskExplanation' | 'topReasons' | 'recommendedAction' | 'confidenceWording'> | null {
+  try {
+    const cleaned = value.replace(/^```json\s*|\s*```$/g, '').trim();
+    const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    if (
+      typeof parsed.shortDescription !== 'string' ||
+      typeof parsed.riskExplanation !== 'string' ||
+      !Array.isArray(parsed.topReasons) ||
+      typeof parsed.recommendedAction !== 'string' ||
+      typeof parsed.confidenceWording !== 'string'
+    ) {
+      return null;
+    }
+    return {
+      shortDescription: sanitizeAiText(parsed.shortDescription, 220),
+      riskExplanation: sanitizeAiText(parsed.riskExplanation, 420),
+      topReasons: parsed.topReasons.filter((item): item is string => typeof item === 'string').map((item) => sanitizeAiText(item, 140)).slice(0, 5),
+      recommendedAction: sanitizeAiText(parsed.recommendedAction, 220),
+      confidenceWording: sanitizeAiText(parsed.confidenceWording, 220)
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sanitizeAiText(value: string, maxLength: number): string {
+  return value
+    .replace(/does not involve browsing the URL|did not browse the URL|did not inspect the URL/gi, 'uses deterministic URL checks, redirect analysis, and any enabled threat-intelligence sources')
+    .replace(/\bis safe\b/gi, 'has no obvious risk detected')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength);
+}
+
+function templateShortDescription(riskLevel: RiskLevel): string {
+  if (riskLevel === 'dangerous') {
+    return 'Strong warning signs or a known threat match were found.';
+  }
+  if (riskLevel === 'high') {
+    return 'Multiple warning signs were found.';
+  }
+  if (riskLevel === 'caution') {
+    return 'Some URL patterns deserve caution.';
+  }
+  return 'No obvious risk detected from local URL checks. This is not a guarantee.';
+}
+
+function templateAction(riskLevel: RiskLevel): string {
+  if (riskLevel === 'dangerous') {
+    return 'Do not open this link unless you know exactly what it is.';
+  }
+  if (riskLevel === 'high') {
+    return 'Avoid opening unless you fully trust the source.';
+  }
+  if (riskLevel === 'caution') {
+    return 'Review the destination and reasons before opening.';
+  }
+  return 'Only open it if you trust the source of the QR code.';
 }

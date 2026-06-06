@@ -19,56 +19,88 @@ describe('URL safety helpers', () => {
 
   it('scores deterministic signals without AI input', () => {
     const score = scoreSignals([
-      { key: 'a', label: 'medium signal', severity: 'medium' },
-      { key: 'b', label: 'high signal', severity: 'high' },
-      { key: 'c', label: 'low signal', severity: 'low' }
+      { key: 'a', label: 'caution signal', severity: 'caution', score: 15, category: 'metadata' },
+      { key: 'b', label: 'high signal', severity: 'high', score: 34, category: 'metadata' },
+      { key: 'c', label: 'low signal', severity: 'low', score: 0, category: 'metadata' }
     ]);
 
     expect(score).toBe(49);
-    expect(riskLevel(score)).toBe('medium');
+    expect(riskLevel(score)).toBe('caution');
   });
 
-  it('scores Google Web Risk matches as high confidence risk', () => {
-    expect(scoreSignals([{ key: 'web-risk-threat-MALWARE', label: 'Known Google threat match found. MALWARE: dangerous.', severity: 'high' }])).toBe(
-      100
-    );
-    expect(
-      scoreSignals([{ key: 'web-risk-threat-SOCIAL_ENGINEERING', label: 'Known Google threat match found. SOCIAL_ENGINEERING: dangerous.', severity: 'high' }])
-    ).toBe(100);
-    expect(
-      scoreSignals([{ key: 'web-risk-threat-UNWANTED_SOFTWARE', label: 'Known Google threat match found. UNWANTED_SOFTWARE: high risk.', severity: 'high' }])
-    ).toBe(80);
+  it('scores strong deterministic signals without a feed dependency', () => {
+    expect(scoreSignals([{ key: 'localhostOrPrivateIp', label: 'Private URL.', severity: 'dangerous', score: 95, category: 'host' }])).toBe(95);
+    expect(scoreSignals([{ key: 'mixedScriptHostname', label: 'Mixed scripts.', severity: 'caution', score: 35, category: 'host' }])).toBe(35);
   });
 
-  it('uses Google Web Risk uris.search and cautious no-match wording', async () => {
+  it('runs without optional threat feed keys', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (url: string | URL | Request) => {
-        const nextUrl = String(url);
-        if (nextUrl.includes('webrisk.googleapis.com')) {
-          expect(nextUrl).toContain('/v1/uris:search');
-          expect(nextUrl).toContain('threatTypes=MALWARE');
-          expect(nextUrl).toContain('threatTypes=SOCIAL_ENGINEERING');
-          expect(nextUrl).toContain('threatTypes=UNWANTED_SOFTWARE');
-          expect(nextUrl).toContain('key=test-key');
-          return Response.json({});
-        }
+      vi.fn(async () => {
         return new Response('<title>Example</title>', {
           headers: { 'content-type': 'text/html' }
         });
       })
     );
 
-    const result = await buildUrlCheck('https://example.com', { GOOGLE_WEB_RISK_API_KEY: 'test-key' });
+    const result = await buildUrlCheck('https://example.com', { THREAT_FEEDS_ENABLED: 'false' });
 
-    expect(result.signals).toContainEqual({
-      key: 'web-risk-no-match',
-      label: 'No known Google threat match found. This does not guarantee the site is safe.',
-      severity: 'low'
-    });
+    expect(result.summaryLabel).toBe('No obvious risk detected');
+    expect(result.threatIntel[0].commercialUseStatus).toBe('disabled');
+    expect(result.threatIntel[0].rawReference).toContain('External threat feeds disabled');
+    expect(result.confidenceWording).toBe('Confidence: low because external threat feeds are disabled. No obvious risk was found in local URL and redirect checks.');
   });
 
-  it('falls back to deterministic heuristics when Google Web Risk is unavailable', async () => {
+  it('keeps same-domain redirects low risk by themselves', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const nextUrl = String(url);
+        if (nextUrl.includes('/start')) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://www.pret.co.uk/en-GB/club-pret?utm_source=QR' }
+          });
+        }
+        return new Response('<title>Club Pret</title>', {
+          headers: { 'content-type': 'text/html' }
+        });
+      })
+    );
+
+    const result = await buildUrlCheck('https://www.pret.co.uk/start?utm_source=QR', { THREAT_FEEDS_ENABLED: 'false' });
+
+    expect(result.finalUrl).toBe('https://www.pret.co.uk/en-GB/club-pret?utm_source=QR');
+    expect(result.riskScore).toBe(0);
+    expect(result.riskLevel).toBe('low');
+    expect(result.signals.some((signal) => signal.key === 'crossDomainRedirect')).toBe(false);
+  });
+
+  it('adds risk for cross-domain redirects', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request) => {
+        const nextUrl = String(url);
+        if (nextUrl.includes('example.com/start')) {
+          return new Response(null, {
+            status: 302,
+            headers: { location: 'https://other-example.net/final' }
+          });
+        }
+        return new Response('<title>Other</title>', {
+          headers: { 'content-type': 'text/html' }
+        });
+      })
+    );
+
+    const result = await buildUrlCheck('https://example.com/start', { THREAT_FEEDS_ENABLED: 'false' });
+
+    expect(result.signals.some((signal) => signal.key === 'crossDomainRedirect')).toBe(true);
+    expect(result.riskScore).toBeGreaterThanOrEqual(15);
+  });
+
+  it('falls back to deterministic heuristics when optional feeds are unavailable', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string | URL | Request) => {
@@ -82,13 +114,29 @@ describe('URL safety helpers', () => {
       })
     );
 
-    const result = await buildUrlCheck('https://example.com', { GOOGLE_WEB_RISK_API_KEY: 'test-key' });
+    const result = await buildUrlCheck('https://example.com', { THREAT_FEEDS_ENABLED: 'true', GOOGLE_WEB_RISK_ENABLED: 'true', GOOGLE_WEB_RISK_API_KEY: 'test-key' });
 
-    expect(result.signals).toContainEqual({
-      key: 'web-risk-unavailable',
-      label: 'Google Web Risk lookup is unavailable, so deterministic heuristics were used without Google threat intelligence.',
-      severity: 'low'
-    });
+    expect(result.threatIntel.some((item) => item.source === 'google-web-risk' && item.status === 'unavailable')).toBe(true);
     expect(result.riskScore).toBe(0);
+    expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('Google Web Risk lookup failed'));
+  });
+
+  it('keeps suspicious PayPal-looking URLs high risk', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('<title>Suspicious</title>', { headers: { 'content-type': 'text/html' } }))
+    );
+
+    const result = await buildUrlCheck('https://paypal-security.example.com/login?x=%2F%2F', { THREAT_FEEDS_ENABLED: 'false' });
+
+    expect(result.riskLevel).toBe('high');
+    expect(result.riskScore).toBeGreaterThanOrEqual(51);
+  });
+
+  it('marks private or local IP URLs dangerous without external threat feeds', async () => {
+    const result = await buildUrlCheck('http://192.168.0.1', { THREAT_FEEDS_ENABLED: 'false' });
+
+    expect(result.riskLevel).toBe('dangerous');
+    expect(result.riskScore).toBeGreaterThanOrEqual(95);
   });
 });

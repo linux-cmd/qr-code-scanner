@@ -4,10 +4,15 @@ compatibility_date = "2026-06-05"
 
 [[kv_namespaces]]
 binding = "AI_ANALYSIS_CACHE"
-id = "replace-with-production-kv-id"
-preview_id = "replace-with-preview-kv-id"
+id = "9ae47e7c5a554db09d6cd1b20466f8bf"
+preview_id = "57b2c5f04c5940b2a084980e8182f70d"
 
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "replace-with-production-rate-limit-kv-id"
-preview_id = "replace-with-preview-rate-limit-kv-id"
+id = "a2ee1a9708f24175b132caf1dbbf4957"
+preview_id = "d41f9a9f293f43a48a0510f24554f0c2"
+
+[[kv_namespaces]]
+binding = "THREAT_INTEL_CACHE"
+id = "44e9e21be18b47999b205249dab56be8"
+preview_id = "ee82d8e1a6cf406a845622ce47491304"

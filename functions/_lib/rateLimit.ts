@@ -1,4 +1,5 @@
 import type { AppEnv } from './types';
+import { envFlag } from './env';
 
 export async function hashText(value: string): Promise<string> {
   const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
@@ -15,6 +16,10 @@ export async function enforceRateLimit(args: {
   limit: number;
   windowSeconds: number;
 }) {
+  if (!envFlag(args.env.RATE_LIMIT_ENABLED, true)) {
+    return;
+  }
+
   const kv = args.env.RATE_LIMIT_KV;
   if (!kv) {
     return;

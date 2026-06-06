@@ -1,4 +1,5 @@
 import type { AppEnv } from './types';
+import { envFlag } from './env';
 
 type TurnstileResponse = {
   success: boolean;
@@ -6,6 +7,10 @@ type TurnstileResponse = {
 };
 
 export async function verifyTurnstile(env: AppEnv, token: string | null | undefined, request: Request) {
+  if (!envFlag(env.TURNSTILE_ENABLED, false)) {
+    return;
+  }
+
   if (!env.TURNSTILE_SECRET_KEY) {
     return;
   }
