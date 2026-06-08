@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="LinkLens">
+  <rect width="64" height="64" rx="14" fill="#0b6f63"/>
+  <circle cx="29" cy="28" r="20" fill="#e8f7f4" stroke="#ffffff" stroke-width="4"/>
+  <path d="M43 43L54 54" stroke="#ffffff" stroke-width="7" stroke-linecap="round"/>
+  <g fill="#123036">
+    <rect x="20" y="19" width="7" height="7" rx="1"/>
+    <rect x="31" y="19" width="7" height="7" rx="1"/>
+    <rect x="20" y="31" width="7" height="7" rx="1"/>
+    <rect x="31" y="31" width="5" height="5" rx="1"/>
+    <rect x="38" y="31" width="4" height="4" rx="1"/>
+    <rect x="31" y="38" width="4" height="4" rx="1"/>
+    <rect x="38" y="38" width="5" height="5" rx="1"/>
+  </g>
+</svg>

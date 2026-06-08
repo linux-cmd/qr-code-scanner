@@ -16,6 +16,7 @@ import { AiAnalysisPanel } from './components/AiAnalysisPanel';
 import { ScanResult } from './components/ScanResult';
 import { getAiAnalysis, requestDeepScan, scanUrl, sendFeedback } from './lib/api';
 import { canvasFromFile, canvasFromVideo, cropQr, detectQr, pointsToCssPolygon } from './lib/qr';
+import { siteConfig } from './lib/siteConfig';
 import { getUrlCandidate, hostnameFromUrl } from './lib/url';
 import type { AiAnalysisResult, CropResult, QrResult, ScanResult as ScanResultType } from './types';
 
@@ -308,10 +309,25 @@ export default function App() {
 
   return (
     <main className="app-shell">
+      <header className="brand-header">
+        <a className="brand-lockup" href="/" aria-label="LinkLens home">
+          <img alt="" height="42" src="/logo.svg" width="172" />
+        </a>
+        <nav className="top-nav" aria-label="Primary">
+          <a href="/qr-code-scanner.html">QR scanner</a>
+          <a href="/qr-code-url-safety.html">URL checks</a>
+          <a href="/about.html">About</a>
+        </nav>
+      </header>
+
       <section className="hero">
         <div>
-          <p className="eyebrow">Private browser-first QR utility</p>
-          <h1>Scan, check, crop, and save QR codes.</h1>
+          <p className="eyebrow">LinkLens QR code scanner</p>
+          <h1>Scan QR codes and see where links lead.</h1>
+          <p className="hero-copy">
+            Upload a photo, paste a screenshot, use your camera, or scan a URL directly. LinkLens decodes QR codes,
+            crops them for saving, checks redirects, and explains link reliability without opening the destination.
+          </p>
         </div>
         <div className="hero-actions">
           <button className="button primary" onClick={() => fileInputRef.current?.click()} type="button">
@@ -460,7 +476,62 @@ export default function App() {
           </section>
         </aside>
       </section>
+      <section className="marketing-band" aria-labelledby="why-linklens">
+        <div>
+          <p className="eyebrow">Why LinkLens</p>
+          <h2 id="why-linklens">A QR code scanner built for links, not just pixels.</h2>
+          <p>
+            LinkLens helps you scan QR codes from images, crop QR codes from photos, and check QR code links before you
+            decide what to do next. The result focuses on the final destination, redirect behavior, local URL signals,
+            and clear limitations instead of vague safety claims.
+          </p>
+        </div>
+        <div className="feature-grid">
+          <article>
+            <h3>Scan from anywhere</h3>
+            <p>Use upload, drag and drop, paste, camera, or manual URL input for quick QR code scanning.</p>
+          </article>
+          <article>
+            <h3>Crop and save</h3>
+            <p>Automatically crop the detected QR code from a source image and save it as a PNG.</p>
+          </article>
+          <article>
+            <h3>Check the link</h3>
+            <p>Review the original QR URL, final destination, redirects, and risk signals before opening anything.</p>
+          </article>
+        </div>
+      </section>
+
+      <section className="faq-band" aria-labelledby="qr-faq">
+        <h2 id="qr-faq">QR code scanner FAQ</h2>
+        <div className="faq-grid">
+          <details open>
+            <summary>Can LinkLens scan a QR code from an image?</summary>
+            <p>Yes. Upload, drag in, or paste a raster image and LinkLens will try to decode the QR code locally.</p>
+          </details>
+          <details>
+            <summary>Can I crop a QR code from a photo?</summary>
+            <p>Yes. When a QR code is detected, LinkLens creates a padded crop that you can save to your device.</p>
+          </details>
+          <details>
+            <summary>Does LinkLens guarantee a QR code link?</summary>
+            <p>No. LinkLens shows local URL checks, redirects, available threat intelligence, and limitations. It cannot guarantee any destination.</p>
+          </details>
+          <details>
+            <summary>Who built LinkLens?</summary>
+            <p>
+              LinkLens is built by {siteConfig.creator}, a {siteConfig.creatorDescription}.
+            </p>
+          </details>
+        </div>
+      </section>
       <footer className="site-footer">
+        <span>
+          Built by {siteConfig.creator}, a {siteConfig.creatorDescription}.
+        </span>
+        <a href={siteConfig.linkedinUrl} rel="me noopener noreferrer" target="_blank">LinkedIn</a>
+        <a href={siteConfig.githubUrl} rel="me noopener noreferrer" target="_blank">GitHub</a>
+        <a href="/about.html">About</a>
         <a href="/privacy.html">Privacy</a>
         <a href="/terms.html">Terms</a>
         <a href="/contact.html">Contact</a>

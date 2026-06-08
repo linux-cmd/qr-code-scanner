@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://linklens.abhijay-s-panwar.workers.dev/sitemap.xml

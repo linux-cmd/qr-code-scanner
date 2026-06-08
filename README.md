@@ -1,6 +1,8 @@
-# QR Code Scanner
+# LinkLens
 
-A Cloudflare Pages-ready QR web app with browser-side scanning/cropping, deterministic URL reliability checks, optional AI explanations, and AdSense Auto Ads support.
+LinkLens is a Cloudflare Pages-ready QR code scanner and link checker with browser-side scanning/cropping, deterministic URL reliability checks, optional AI explanations, AdSense readiness, and SEO content pages.
+
+Built by Abhijay Panwar, a student developer based in Texas.
 
 ## Features
 
@@ -11,6 +13,7 @@ A Cloudflare Pages-ready QR web app with browser-side scanning/cropping, determi
 - Groq-first AI provider flow with Gemini fallback when configured and the primary provider fails, rate-limits, or times out.
 - Turnstile and KV-backed rate limits for the AI endpoint.
 - AdSense Auto Ads script loads only when configured.
+- LinkLens brand assets, SEO metadata, sitemap, robots.txt, and content hub pages.
 
 ## Setup
 
@@ -39,6 +42,7 @@ THREAT_FEEDS_ENABLED
 GOOGLE_WEB_RISK_ENABLED
 TURNSTILE_SECRET_KEY
 VITE_TURNSTILE_SITE_KEY
+VITE_SITE_URL
 VITE_ADSENSE_CLIENT_ID
 ADSENSE_PUBLISHER_ID
 ```
@@ -80,3 +84,11 @@ Deploy with Cloudflare Pages using:
 - Functions directory: `functions`
 
 `public/ads.txt` is generated during build only when `ADSENSE_PUBLISHER_ID` is set, so local builds without that variable do not publish an invalid ads.txt file.
+
+The current canonical SEO base URL is:
+
+```text
+https://linklens.abhijay-s-panwar.workers.dev
+```
+
+When the custom domain is ready, update `VITE_SITE_URL`, static canonical links, `robots.txt`, and `sitemap.xml` to `https://getlinklens.app`.

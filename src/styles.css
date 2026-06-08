@@ -34,6 +34,38 @@ a {
   padding: 32px 0;
 }
 
+.brand-header {
+  align-items: center;
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  margin-bottom: 28px;
+}
+
+.brand-lockup {
+  align-items: center;
+  display: inline-flex;
+}
+
+.brand-lockup img {
+  display: block;
+  height: 42px;
+  width: auto;
+}
+
+.top-nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.top-nav a {
+  color: #4d5d65;
+  font-size: 0.92rem;
+  font-weight: 800;
+}
+
 .hero {
   align-items: end;
   display: flex;
@@ -61,7 +93,7 @@ h1 {
   font-size: clamp(2.2rem, 6vw, 4.8rem);
   line-height: 0.96;
   letter-spacing: 0;
-  margin-bottom: 0;
+  margin-bottom: 14px;
   max-width: 760px;
 }
 
@@ -69,6 +101,14 @@ h2 {
   font-size: 1rem;
   letter-spacing: 0;
   margin-bottom: 14px;
+}
+
+.hero-copy {
+  color: #4d5d65;
+  font-size: 1rem;
+  line-height: 1.6;
+  margin-bottom: 0;
+  max-width: 720px;
 }
 
 .hero-actions,
@@ -395,14 +435,93 @@ h2 {
   margin-top: 10px;
 }
 
+.marketing-band,
+.faq-band {
+  background: #fff;
+  border: 1px solid #dbe3e6;
+  border-radius: 8px;
+  margin-top: 22px;
+  padding: clamp(20px, 4vw, 34px);
+}
+
+.marketing-band {
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.2fr);
+}
+
+.marketing-band h2,
+.faq-band h2 {
+  color: #123036;
+  font-size: clamp(1.45rem, 3vw, 2.2rem);
+  line-height: 1.08;
+  margin-bottom: 12px;
+}
+
+.marketing-band p,
+.feature-grid p,
+.faq-grid p {
+  color: #4d5d65;
+  line-height: 1.65;
+}
+
+.feature-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.feature-grid article {
+  background: #f4f7f7;
+  border: 1px solid #dce5e7;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.feature-grid h3,
+.faq-grid summary {
+  color: #123036;
+  font-size: 0.98rem;
+  font-weight: 850;
+  margin: 0 0 8px;
+}
+
+.feature-grid p,
+.faq-grid p {
+  font-size: 0.92rem;
+  margin-bottom: 0;
+}
+
+.faq-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.faq-grid details {
+  background: #f4f7f7;
+  border: 1px solid #dce5e7;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.faq-grid summary {
+  cursor: pointer;
+  margin-bottom: 0;
+}
+
 .site-footer {
+  align-items: center;
   display: flex;
+  flex-wrap: wrap;
   gap: 18px;
   justify-content: center;
   margin-top: 28px;
+  text-align: center;
 }
 
-.site-footer a {
+.site-footer a,
+.site-footer span {
   color: #5b6970;
   font-weight: 700;
 }
@@ -460,9 +579,17 @@ h2 {
 
 @media (max-width: 920px) {
   .hero,
-  .workspace {
+  .workspace,
+  .marketing-band,
+  .feature-grid,
+  .faq-grid {
     display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .brand-header {
+    align-items: start;
+    display: grid;
   }
 
   .hero-actions {
@@ -490,6 +617,10 @@ h2 {
 
   .url-form {
     grid-template-columns: 1fr;
+  }
+
+  .top-nav {
+    gap: 12px;
   }
 
   .drop-zone {

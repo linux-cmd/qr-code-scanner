@@ -3,15 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Privacy Policy - QR Scanner</title>
+    <meta name="description" content="LinkLens privacy policy for browser-first QR code scanning, QR crop export, and URL reliability checks." />
+    <link rel="canonical" href="https://linklens.abhijay-s-panwar.workers.dev/privacy.html" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/brand.css" />
+    <title>Privacy Policy - LinkLens</title>
   </head>
   <body>
-    <main>
-      <h1>Privacy Policy</h1>
-      <p>This scanner processes QR images in your browser when possible. URL intelligence requests are sent to the site backend to normalize the URL, resolve redirects, and calculate deterministic risk signals.</p>
-      <p>API keys are kept server-side. Cache keys should be hashed where possible, and optional third-party threat providers are disabled unless explicitly configured.</p>
-      <p>The scanner does not guarantee that any destination is safe. It is intended to reduce risk by showing destination, signals, limitations, and optional AI explanations.</p>
-      <p><a href="/">Back to scanner</a></p>
+    <main class="page-shell">
+      <header class="brand-row">
+        <a href="/"><img alt="LinkLens" height="42" src="/logo.svg" width="172" /></a>
+        <nav><a href="/about.html">About</a><a href="/terms.html">Terms</a><a href="/contact.html">Contact</a></nav>
+      </header>
+      <article class="content-card">
+        <p class="eyebrow">Privacy</p>
+        <h1>Browser-first QR scanning.</h1>
+        <p>LinkLens processes QR images in your browser when possible. Upload, paste, camera, crop, and save workflows are designed to keep image handling local unless a URL reliability check is requested.</p>
+        <h2>URL checks</h2>
+        <p>When a QR code contains a URL, LinkLens sends that URL to the backend to normalize it, resolve redirects, and calculate deterministic risk signals. API keys and optional provider secrets stay server-side.</p>
+        <h2>Limitations</h2>
+        <p>LinkLens reduces risk by showing destination details, signals, limitations, and optional AI explanations. It cannot guarantee that any destination is trustworthy.</p>
+        <p><a class="button-link" href="/">Back to the QR code scanner</a></p>
+      </article>
+      <footer class="page-footer"><span>Built by Abhijay Panwar in Texas.</span><a href="/contact.html">Contact</a></footer>
     </main>
   </body>
 </html>
